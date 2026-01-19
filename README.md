@@ -1,5 +1,6 @@
 # lex-eval
 This repository implements the lex.eval evaluation platform for the lex.llm project. 
+Make sure that lex-db and lex-llm servers are running before testing any evaluation workflow.
 
 - **Useful Commands:**
   | Command | Description |
