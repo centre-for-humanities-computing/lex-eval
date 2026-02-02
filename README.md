@@ -15,6 +15,6 @@ https://github.com/centre-for-humanities-computing/lex-eval/wiki/lex%E2%80%90eva
 
 If you do not want to clone lex-db and lex-llm, you can directly access the servers using:
 
-ssh -L 8000:localhost:8000 -J YOUR_AU_ID@ssh.au.dk chc_apps@spark6-7ed1.iot.net.au.dk
+`ssh -L 8000:localhost:8000 -J YOUR_AU_ID@ssh.au.dk chc_apps@spark6-7ed1.iot.net.au.dk`
 
 Keep the session/terminal open and then run your test scripts.
