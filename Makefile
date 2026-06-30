@@ -1,6 +1,6 @@
 # Makefile for the Lex Eval project
 
-.PHONY: install install-dev static-type-check lint lint-check test pr help
+.PHONY: install install-dev static-type-check lint lint-check test stress-test pr help
 
 # Default target
 default: help
@@ -30,6 +30,10 @@ lint-check:
 test:
 	@echo "--- 🧪 Running tests ---"
 	uv run pytest src/tests/
+
+stress-test:
+	@echo "--- 🔥 Running stress test ---"
+	uv run python -m lex_eval.stress_test.run_stress_test $(ARGS)
 
 pr: static-type-check lint test
 	@echo "--- ✅ All PR checks passed successfully ---"
