@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 async def _worker(
     semaphore: asyncio.Semaphore,
-    client: httpx.AsyncClient,
     base_url: str,
     workflow_id: str,
     query: str,
@@ -38,15 +37,16 @@ async def _worker(
     """Run one request, bounded by the semaphore, and collect its result."""
     async with semaphore:
         conversation_id = str(uuid.uuid4())
-        result = await run_single_stress(
-            client,
-            base_url,
-            workflow_id,
-            query,
-            conversation_id=conversation_id,
-            token=token,
-            timeout=timeout,
-        )
+        async with httpx.AsyncClient() as client:
+            result = await run_single_stress(
+                client,
+                base_url,
+                workflow_id,
+                query,
+                conversation_id=conversation_id,
+                token=token,
+                timeout=timeout,
+            )
         results.append(result)
         done = completed[0] + 1
         completed[0] = done
@@ -86,23 +86,35 @@ async def drive_load(
 
     t0 = time.monotonic()
 
-    async with httpx.AsyncClient() as client:
-        tasks = [
-            _worker(
-                semaphore,
-                client,
-                base_url,
-                workflow_id,
-                query,
-                token,
-                request_timeout,
-                results,
-                completed,
-                total,
-            )
-            for query in queries
-        ]
-        await asyncio.gather(*tasks)
+    tasks = [
+        _worker(
+            semaphore,
+            base_url,
+            workflow_id,
+            query,
+            token,
+            request_timeout,
+            results,
+            completed,
+            total,
+        )
+        for query in queries
+    ]
+    # Add a hard deadline: total wall-clock = per-request timeout + 10 %
+    # buffer so we never wait longer than the worst-case serial execution.
+    overall_deadline = request_timeout * len(queries) + 60.0
+    done, pending = await asyncio.wait(
+        [asyncio.ensure_future(t) for t in tasks],
+        timeout=overall_deadline,
+    )
+    if pending:
+        print(
+            f"  ⚠ {len(pending)} request(s) did not complete within "
+            f"{overall_deadline:.0f}s — cancelling.",
+            flush=True,
+        )
+        for task in pending:
+            task.cancel()
 
     elapsed = time.monotonic() - t0
     print(

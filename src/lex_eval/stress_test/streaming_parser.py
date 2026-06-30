@@ -78,8 +78,18 @@ async def run_single_stress(
     t_end: Optional[float] = None
 
     try:
+        # Use an explicit httpx.Timeout so the *read* timeout is distinct
+        # from connect/write/pool.  This ensures a stalled stream (server
+        # stops sending NDJSON lines) is killed after `timeout` seconds
+        # rather than waiting indefinitely.
+        http_timeout = httpx.Timeout(
+            connect=10.0,
+            read=timeout,
+            write=30.0,
+            pool=10.0,
+        )
         async with client.stream(
-            "POST", url, json=payload, headers=headers, timeout=timeout
+            "POST", url, json=payload, headers=headers, timeout=http_timeout
         ) as response:
             timings.http_status = response.status_code
 
