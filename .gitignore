@@ -212,3 +212,4 @@ __marimo__/
 results/*
 data/*
 .github/copilot-instructions.md
+.env

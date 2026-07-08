@@ -15,7 +15,12 @@ from typing import List, Optional
 
 import httpx
 
-from lex_eval.stress_test.results import LLMCallRecord, RunTimings, SingleRunResult
+from lex_eval.stress_test.results import (
+    LLMCallRecord,
+    RunTimings,
+    SingleRunResult,
+    WorkflowStepRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +74,7 @@ async def run_single_stress(
 
     timings = RunTimings()
     llm_calls: List[LLMCallRecord] = []
+    steps: List[WorkflowStepRecord] = []
     run_id = ""
     conv_id = conversation_id
     backend_spilled = False
@@ -78,8 +84,18 @@ async def run_single_stress(
     t_end: Optional[float] = None
 
     try:
+        # Use an explicit httpx.Timeout so the *read* timeout is distinct
+        # from connect/write/pool.  This ensures a stalled stream (server
+        # stops sending NDJSON lines) is killed after `timeout` seconds
+        # rather than waiting indefinitely.
+        http_timeout = httpx.Timeout(
+            connect=10.0,
+            read=timeout,
+            write=30.0,
+            pool=10.0,
+        )
         async with client.stream(
-            "POST", url, json=payload, headers=headers, timeout=timeout
+            "POST", url, json=payload, headers=headers, timeout=http_timeout
         ) as response:
             timings.http_status = response.status_code
 
@@ -96,6 +112,7 @@ async def run_single_stress(
                     run_id="",
                     timings=timings,
                     llm_calls=[],
+                    steps=[],
                     backend_spilled=False,
                 )
 
@@ -117,13 +134,21 @@ async def run_single_stress(
                         t_first_chunk = time.monotonic()
 
                 elif event_type == "workflow_step":
-                    # Capture completed steps with llm_calls info
                     data = event.get("data", {})
                     if data.get("status") == "completed":
                         output = data.get("output", {})
                         step_duration_ms = output.get("duration_ms", 0)
-                        step_llm_calls = output.get("llm_calls", [])
                         step_name = data.get("name", "unknown")
+
+                        # Record step timing (for profiling).
+                        steps.append(
+                            WorkflowStepRecord(
+                                name=step_name, duration_ms=step_duration_ms
+                            )
+                        )
+
+                        # Capture LLM call details.
+                        step_llm_calls = output.get("llm_calls", [])
                         for call in step_llm_calls:
                             rec = LLMCallRecord(
                                 step_name=step_name,
@@ -164,5 +189,6 @@ async def run_single_stress(
         run_id=run_id,
         timings=timings,
         llm_calls=llm_calls,
+        steps=steps,
         backend_spilled=backend_spilled,
     )
